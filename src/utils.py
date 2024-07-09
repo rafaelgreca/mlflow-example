@@ -1,9 +1,12 @@
+from gensim import downloader
+from nltk.tokenize import word_tokenize
 from torch.utils.data import DataLoader, TensorDataset
 from typing import Tuple, List
 from transformers import BertTokenizer
 import os
 import torch
 import pandas as pd
+import numpy as np
 
 
 def read_dataset(folder_path: str, file_name: str) -> pd.DataFrame:
@@ -65,15 +68,15 @@ def bert_preprocessing(
     texts: List, max_len: int, tokenizer: BertTokenizer
 ) -> Tuple[List, List]:
     """
-    Preprocessing the fexts to be used with BERT (using BERT Tokenizer).
+    Preprocessing the texts to be used with BERT (using BERT Tokenizer).
 
     Args:
-        texts (List): a list of the texts to be processed.
+        texts (List): a list containing texts that will be processed.
         max_len (int): the max length of the text.
         tokenizer (BertTokenizer): the BERT tokenizer.
 
     Returns:
-        Tuple[List, List]: the input ids and attention masks obtained.
+        Tuple[List, List]: the input ids and attention masks obtained, respectively.
     """
     input_ids = []
     attention_masks = []
@@ -96,3 +99,30 @@ def bert_preprocessing(
     attention_masks = torch.cat(attention_masks, dim=0)
 
     return input_ids, attention_masks
+
+
+def get_vector_mean(df: pd.DataFrame) -> np.ndarray:
+    model = downloader.load("word2vec-google-news-300")
+
+    df["tokens"] = df["summary"].apply(word_tokenize)
+
+    # getting the word2vec embedding of a sentence by summing the embedding of the
+    # individual words and then dividing by the number of words that exists in the embedding
+    def get_word2vec_embeddings(words):
+        nwords = 0
+        feature_vec = np.zeros((300,), dtype=np.float32)
+
+        for word in words:
+            try:
+                embedding_vector = model[word]
+                if embedding_vector is not None:
+                    feature_vec = np.add(feature_vec, embedding_vector)
+                    nwords += 1
+            except KeyError:
+                continue
+
+        feature_vec = np.divide(feature_vec, nwords)
+        return feature_vec
+
+    df["embeddings"] = df["tokens"].apply(get_word2vec_embeddings)
+    return np.vstack(df["embeddings"]), np.asarray(df["genre"])

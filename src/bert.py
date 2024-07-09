@@ -1,7 +1,155 @@
-from transformers import BertForSequenceClassification
+from transformers import BertForSequenceClassification, get_linear_schedule_with_warmup
 from typing import Union, Tuple
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 import torch
 import torch.nn as nn
+
+
+def train_bert(
+    model: torch.nn.Module,
+    optimizer: torch.optim.AdamW,
+    device: torch.device,
+    dataloader: torch.utils.data.DataLoader,
+    scheduler: get_linear_schedule_with_warmup,
+) -> Tuple[float, float]:
+    """
+    Function responsible for the training step.
+
+    Args:
+        model (torch.nn.Module): the Bert model.
+        optimizer (torch.nn.optim.AdamW): the optimizer that will be used.
+        device (torch.device): the torch device (cpu or cuda).
+        dataloader (torch.utils.data.DataLoader): the training dataloader.
+        scheduler (get_linear_schedule_with_warmup): BERT's warmup scheduler.
+
+    Returns:
+        Tuple[float, float]: current epoch training f1 score and loss, respectively.
+    """
+    model.train()
+    train_loss = 0
+    train_f1 = 0
+    train_precision = 0
+    train_recall = 0
+    train_metrics = {}
+
+    for batch in dataloader:
+        input_id, attention_mask, target = batch
+        input_id, attention_mask, target = (
+            input_id.to(device),
+            attention_mask.to(device),
+            target.to(device),
+        )
+        target = target.float()
+
+        optimizer.zero_grad()
+
+        # define inputs
+        loss, logits = model(input_id, attention_mask, target)
+        train_loss += loss.item()
+        loss.backward()
+
+        optimizer.step()
+
+        scheduler.step()
+
+        # getting the index (class) with the highest value
+        prediction = torch.argmax(logits, axis=1).flatten()
+        target = torch.argmax(target, axis=1).flatten()
+
+        train_f1 += f1_score(
+            target.detach().cpu().data.numpy(),
+            prediction.detach().cpu().numpy(),
+            average="weighted",
+            zero_division=0.0,
+        )
+
+        train_precision += precision_score(
+            target.detach().cpu().data.numpy(),
+            prediction.detach().cpu().numpy(),
+            average="weighted",
+            zero_division=0.0,
+        )
+
+        train_recall += recall_score(
+            target.detach().cpu().data.numpy(),
+            prediction.detach().cpu().numpy(),
+            average="weighted",
+            zero_division=0.0,
+        )
+
+    train_loss /= len(dataloader)
+    train_metrics["train f1 score"] = train_f1 / len(dataloader)
+    train_metrics["train recall"] = train_recall / len(dataloader)
+    train_metrics["train precision"] = train_precision / len(dataloader)
+    return train_metrics, train_loss
+
+
+def test_bert(
+    model: torch.nn.Module,
+    device: torch.device,
+    dataloader: torch.utils.data.DataLoader,
+):
+    """
+    Function responsible for the test/validation step.
+
+    Args:
+        model (torch.nn.Module): the Bert model.
+        device (torch.device): the torch device (cpu or cuda).
+        dataloader (torch.utils.data.DataLoader): the validation dataloader.
+
+    Returns:
+        Tuple[float, float]: current epoch validation f1 score and loss, respectively.
+    """
+    model.eval()
+    test_loss = 0
+    test_f1 = 0
+    test_precision = 0
+    test_recall = 0
+    test_metrics = {}
+
+    with torch.inference_mode():
+        for batch in dataloader:
+            input_id, attention_mask, target = batch
+            input_id, attention_mask, target = (
+                input_id.to(device),
+                attention_mask.to(device),
+                target.to(device),
+            )
+            target = target.float()
+            loss, logits = model(input_id, attention_mask, target)
+
+            test_loss += loss.item()
+
+            # getting the index (class) with the highest value
+            prediction = torch.argmax(logits, axis=1).flatten()
+            target = torch.argmax(target, axis=1).flatten()
+
+            test_f1 += f1_score(
+                target.detach().cpu().data.numpy(),
+                prediction.detach().cpu().numpy(),
+                average="weighted",
+                zero_division=0.0,
+            )
+
+            test_precision += precision_score(
+                target.detach().cpu().data.numpy(),
+                prediction.detach().cpu().numpy(),
+                average="weighted",
+                zero_division=0.0,
+            )
+
+            test_recall += recall_score(
+                target.detach().cpu().data.numpy(),
+                prediction.detach().cpu().numpy(),
+                average="weighted",
+                zero_division=0.0,
+            )
+
+    test_loss /= len(dataloader)
+    test_metrics["test f1 score"] = test_f1 / len(dataloader)
+    test_metrics["test recall"] = test_recall / len(dataloader)
+    test_metrics["test precision"] = test_precision / len(dataloader)
+    return test_metrics, test_loss
 
 
 class BERT(nn.Module):
@@ -14,11 +162,14 @@ class BERT(nn.Module):
             freeze (bool): whether freeze the BERT model's parameters or not.
                 Defaults to False.
         """
+        super(BERT, self).__init__()
         self.model = BertForSequenceClassification.from_pretrained(
             "bert-base-uncased",
             num_labels=num_labels,
             output_attentions=False,
             output_hidden_states=False,
+            force_download=False,
+            resume_download=False,
         )
 
         if freeze:
