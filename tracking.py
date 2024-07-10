@@ -320,7 +320,7 @@ if __name__ == "__main__":
         # into the mlflow experiment run
         train_xgboost(X_train=train_X, y_train=train_y, X_test=test_X, y_test=test_y)
 
-    # creating a separate run for the XGBoost model
+    # creating a separate run for the BERT model
     with mlflow.start_run(experiment_id=experiment_id, run_name="bert"):
         # logging the preprocessed files
         mlflow.log_artifacts(local_dir=os.path.join(os.getcwd(), "files"))
@@ -336,7 +336,7 @@ if __name__ == "__main__":
             mlflow.data.from_numpy(testing_df["summary"].values), context="testing_data"
         )
 
-        # training the xgboost model and saving it
+        # training the BERT model and saving it
         # into the mlflow experiment run
         train_bert_model(
             train_df=training_df,

@@ -1,6 +1,6 @@
 from transformers import BertForSequenceClassification, get_linear_schedule_with_warmup
 from typing import Union, Tuple
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, recall_score
 import torch
 import torch.nn as nn
 
@@ -23,7 +23,7 @@ def train_bert(
         scheduler (get_linear_schedule_with_warmup): BERT's warmup scheduler.
 
     Returns:
-        Tuple[float, float]: current epoch training f1 score and loss, respectively.
+        Tuple[Dict, float]: current epoch metrics score and loss, respectively.
     """
     model.train()
     train_loss = 0
@@ -98,7 +98,7 @@ def test_bert(
         dataloader (torch.utils.data.DataLoader): the validation dataloader.
 
     Returns:
-        Tuple[float, float]: current epoch validation f1 score and loss, respectively.
+        Tuple[Dict, float]: current epoch metrics score and loss, respectively.
     """
     model.eval()
     test_loss = 0

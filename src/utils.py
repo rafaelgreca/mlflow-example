@@ -102,6 +102,15 @@ def bert_preprocessing(
 
 
 def get_vector_mean(df: pd.DataFrame) -> np.ndarray:
+    """
+    Get the mean embedding vector of a collection of sentences.
+
+    Args:
+        df (pd.DataFrame): a dataframe containing the sentences.
+
+    Returns:
+        np.ndarray: the mean embedding vector for each sentence.
+    """
     model = downloader.load("word2vec-google-news-300")
 
     df["tokens"] = df["summary"].apply(word_tokenize)
