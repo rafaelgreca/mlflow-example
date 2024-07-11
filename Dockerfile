@@ -9,5 +9,3 @@ WORKDIR /mlflow-example
 RUN pip install --no-cache-dir -U pip
 
 RUN pip install -r requirements.txt
-
-CMD ["python3", "tracking.py"]

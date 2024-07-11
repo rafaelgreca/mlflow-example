@@ -1,13 +1,15 @@
 from src.utils import read_dataset, bert_preprocessing, get_vector_mean
 from src.bert import BERT, train_bert, test_bert
 from src.dataset import create_dataloader
+from mlflow.models import infer_signature
 from torch.nn.functional import one_hot
 from transformers import BertTokenizer, get_linear_schedule_with_warmup
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, recall_score, precision_score, roc_auc_score
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-from typing import Tuple
+from typing import Dict
 import pandas as pd
 import numpy as np
 import mlflow
@@ -16,7 +18,7 @@ import os
 import torch
 
 
-def data_pipeline() -> Tuple[pd.DataFrame, pd.DataFrame]:
+def data_pipeline() -> None:
     """
     The pipeline responsible for reading the train and test sets, applying a basic preprocessing step
     on the summary for both sets, and then splitting the training set into training and validation.
@@ -65,14 +67,13 @@ def data_pipeline() -> Tuple[pd.DataFrame, pd.DataFrame]:
         os.path.join(output_folder, "preprocessed_test.csv"), index=False, sep=","
     )
 
-    return train_df, test_df
-
 
 def train_random_forest(
     X_train: np.ndarray,
     y_train: np.ndarray,
     X_test: np.ndarray,
     y_test: np.ndarray,
+    input_example: Dict,
 ) -> None:
     """
     Function responsible for training the Random Forest model and then
@@ -81,11 +82,20 @@ def train_random_forest(
     Args:
         X_train (np.ndarray): the training features array.
         y_train (np.ndarray): the training labels array.
-        X_test (np.ndarray): the test features array.
-        y_test (np.ndarray): the test labels array.
+        X_test (np.ndarray): the validation features array.
+        y_test (np.ndarray): the validation labels array.
+        input_example (Dict): the training dataframe in a Dict format that will be
+            used to save the model's signatures.
     """
     # logging the random forest default parameters using autolog
-    mlflow.sklearn.autolog()
+    mlflow.sklearn.autolog(
+        log_models=False,
+        log_post_training_metrics=False,
+        log_model_signatures=False,
+        log_input_examples=False,
+        log_datasets=False,
+        silent=True,
+    )
 
     # training the random forest model using the default parameters
     rf = RandomForestClassifier(random_state=42)
@@ -115,8 +125,12 @@ def train_random_forest(
 
     mlflow.log_metrics(metrics)
 
+    signature = infer_signature(model_input=X_test, model_output=prediction_test)
+
     # logging the artifacts
-    mlflow.sklearn.log_model(rf, "random_forest")
+    mlflow.sklearn.log_model(
+        rf, "random_forest", signature=signature, input_example=input_example
+    )
 
 
 def train_xgboost(
@@ -124,6 +138,7 @@ def train_xgboost(
     y_train: np.ndarray,
     X_test: np.ndarray,
     y_test: np.ndarray,
+    input_example: Dict,
 ) -> None:
     """
     Function responsible for training the XGBoost model and then
@@ -132,11 +147,19 @@ def train_xgboost(
     Args:
         X_train (np.ndarray): the training features array.
         y_train (np.ndarray): the training labels array.
-        X_test (np.ndarray): the test features array.
-        y_test (np.ndarray): the test labels array.
+        X_test (np.ndarray): the validation features array.
+        y_test (np.ndarray): the validation labels array.
+        input_example (Dict): the training dataframe in a Dict format that will be
+            used to save the model's signatures.
     """
     # logging the xgboost default parameters using autolog
-    mlflow.xgboost.autolog()
+    mlflow.xgboost.autolog(
+        log_models=False,
+        log_model_signatures=False,
+        log_input_examples=False,
+        log_datasets=False,
+        silent=True,
+    )
 
     xgb = XGBClassifier(random_state=42)
     xgb.fit(X_train, y_train)
@@ -165,18 +188,26 @@ def train_xgboost(
 
     mlflow.log_metrics(metrics)
 
+    signature = infer_signature(model_input=X_test, model_output=prediction_test)
+
     # logging the artifacts
-    mlflow.sklearn.log_model(xgb, "xgboost")
+    mlflow.sklearn.log_model(
+        xgb, "xgboost", signature=signature, input_example=input_example
+    )
 
 
-def train_bert_model(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
+def train_bert_model(
+    train_df: pd.DataFrame, test_df: pd.DataFrame, input_example: Dict
+) -> None:
     """
     Function responsible for training the BERT model and then
     saving it results into the current running MLflow experiment.
 
     Args:
         train_df (np.ndarray): the training dataframe.
-        test_df (np.ndarray): the training dataframe.
+        test_df (np.ndarray): the validation dataframe.
+        input_example (Dict): the training dataframe in a Dict format that will be
+            used to save the model's signatures.
     """
     # defining global variables
     epochs = 7
@@ -237,7 +268,13 @@ def train_bert_model(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
     )
 
     # logging the pytorch default parameters using autolog
-    mlflow.pytorch.autolog()
+    mlflow.pytorch.autolog(
+        log_models=False,
+        log_model_signatures=False,
+        log_input_examples=False,
+        log_datasets=False,
+        silent=True,
+    )
 
     # training loop
     for epoch in range(1, epochs + 1):
@@ -261,8 +298,12 @@ def train_bert_model(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
         mlflow.log_metrics(test_metrics, step=epoch)
         mlflow.log_metrics(losses, step=epoch)
 
+    signature = infer_signature(model_input=test_dataloader)
+
     # logging the artifacts
-    mlflow.pytorch.log_model(model, "BERT")
+    mlflow.pytorch.log_model(
+        model, "BERT", signature=signature, input_example=input_example
+    )
 
 
 if __name__ == "__main__":
@@ -271,12 +312,20 @@ if __name__ == "__main__":
         name="first-mlflow-experiment", tags={"version": "v1"}
     )
 
-    # getting the data
-    training_df, testing_df = data_pipeline()
+    # preprocessing the data
+    data_pipeline()
+
+    # loading training set
+    training_df = pd.read_csv("files/preprocessed_train.csv", sep=",")
+    example_input = training_df.to_dict()
+
+    training_df, validation_df = train_test_split(
+        training_df, test_size=0.2, shuffle=True, random_state=42
+    )
 
     # getting the mean embedding vector of each sample
     train_X, train_y = get_vector_mean(training_df)
-    test_X, test_y = get_vector_mean(testing_df)
+    test_X, test_y = get_vector_mean(validation_df)
 
     # creating a separate run for the Random Forest model
     with mlflow.start_run(experiment_id=experiment_id, run_name="random_forest"):
@@ -290,14 +339,14 @@ if __name__ == "__main__":
             context="training_data",
         )
 
-        mlflow.log_input(
-            mlflow.data.from_numpy(testing_df["summary"].values), context="testing_data"
-        )
-
         # training the random forest model and saving it
         # into the mlflow experiment run
         train_random_forest(
-            X_train=train_X, y_train=train_y, X_test=test_X, y_test=test_y
+            X_train=train_X,
+            y_train=train_y,
+            X_test=test_X,
+            y_test=test_y,
+            input_example=example_input,
         )
 
     # creating a separate run for the XGBoost model
@@ -312,13 +361,15 @@ if __name__ == "__main__":
             context="training_data",
         )
 
-        mlflow.log_input(
-            mlflow.data.from_numpy(testing_df["summary"].values), context="testing_data"
-        )
-
         # training the xgboost model and saving it
         # into the mlflow experiment run
-        train_xgboost(X_train=train_X, y_train=train_y, X_test=test_X, y_test=test_y)
+        train_xgboost(
+            X_train=train_X,
+            y_train=train_y,
+            X_test=test_X,
+            y_test=test_y,
+            input_example=example_input,
+        )
 
     # creating a separate run for the BERT model
     with mlflow.start_run(experiment_id=experiment_id, run_name="bert"):
@@ -332,13 +383,8 @@ if __name__ == "__main__":
             context="training_data",
         )
 
-        mlflow.log_input(
-            mlflow.data.from_numpy(testing_df["summary"].values), context="testing_data"
-        )
-
         # training the BERT model and saving it
         # into the mlflow experiment run
         train_bert_model(
-            train_df=training_df,
-            test_df=testing_df,
+            train_df=training_df, test_df=validation_df, input_example=example_input
         )
