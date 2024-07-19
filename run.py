@@ -1,13 +1,14 @@
 import mlflow
-import os
-
-os.environ["MLFLOW_TRACKING_URI"] = "127.0.0.1:5000"
+import argparse
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--experiment_name", "-n", type=str, required=True)
+    args = parser.parse_args()
+
     mlflow.projects.run(
-        uri=".",
-        entry_point="main",
-        version="v1",
+        uri="https://github.com/rafaelgreca/mlflow-example",
+        version="main",
         parameters=None,
-        experiment_name="mlflow-example"
+        experiment_name=args.experiment_name,
     )

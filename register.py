@@ -13,7 +13,7 @@ if __name__ == "__main__":
         model_uri=f"runs:/{args.run_id}/{args.run_name}",
         name=args.name,
         tags=eval(args.tags),
-        await_registration_for=150
+        await_registration_for=150,
     )
 
     print(result)

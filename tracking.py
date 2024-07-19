@@ -86,7 +86,7 @@ def train_random_forest(
         y_test (np.ndarray): the validation labels array.
         input_example (Dict): the training dataframe in a Dict format that will be
             used to save the model's signatures.
-    
+
     Returns:
         model_uri (str): the model uri.
     """
@@ -156,7 +156,7 @@ def train_xgboost(
         y_test (np.ndarray): the validation labels array.
         input_example (Dict): the training dataframe in a Dict format that will be
             used to save the model's signatures.
-    
+
     Returns:
         model_uri (str): the model uri.
     """
@@ -218,7 +218,7 @@ def train_bert_model(
         test_df (np.ndarray): the validation dataframe.
         input_example (Dict): the training dataframe in a Dict format that will be
             used to save the model's signatures.
-    
+
     Returns:
         model_uri (str): the model uri.
     """
@@ -371,7 +371,7 @@ if __name__ == "__main__":
             data=test_X,
             targets=test_y,
             model_type="classifier",
-            evaluators=["default"]
+            evaluators=["default"],
         )
 
     # creating a separate run for the XGBoost model
@@ -401,7 +401,7 @@ if __name__ == "__main__":
             data=test_X,
             targets=test_y,
             model_type="classifier",
-            evaluators=["default"]
+            evaluators=["default"],
         )
 
     # creating a separate run for the BERT model
@@ -423,8 +423,10 @@ if __name__ == "__main__":
         )
 
         # creating the Bert Tokenizer
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
-        
+        tokenizer = BertTokenizer.from_pretrained(
+            "bert-base-uncased", do_lower_case=True
+        )
+
         # preprocessing the testing texts to be exactly what Bert needs
         test_ids, test_attentions = bert_preprocessing(
             texts=testing_df["summary"].tolist(),
