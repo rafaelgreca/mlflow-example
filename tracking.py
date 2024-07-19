@@ -74,7 +74,7 @@ def train_random_forest(
     X_test: np.ndarray,
     y_test: np.ndarray,
     input_example: Dict,
-) -> None:
+) -> str:
     """
     Function responsible for training the Random Forest model and then
     saving it results into the current running MLflow experiment.
@@ -86,6 +86,9 @@ def train_random_forest(
         y_test (np.ndarray): the validation labels array.
         input_example (Dict): the training dataframe in a Dict format that will be
             used to save the model's signatures.
+    
+    Returns:
+        model_uri (str): the model uri.
     """
     # logging the random forest default parameters using autolog
     mlflow.sklearn.autolog(
@@ -106,16 +109,16 @@ def train_random_forest(
     prediction_test_proba = rf.predict_proba(X_test)
 
     metrics = {
-        "test f1 score": f1_score(
+        "validation f1 score": f1_score(
             y_true=y_test, y_pred=prediction_test, average="weighted", zero_division=0.0
         ),
-        "test recall": recall_score(
+        "validation recall": recall_score(
             y_true=y_test, y_pred=prediction_test, average="weighted", zero_division=0.0
         ),
-        "test precision": precision_score(
+        "validation precision": precision_score(
             y_true=y_test, y_pred=prediction_test, average="weighted", zero_division=0.0
         ),
-        "test roc auc score": roc_auc_score(
+        "validation roc auc score": roc_auc_score(
             y_true=y_test,
             y_score=prediction_test_proba,
             average="weighted",
@@ -128,9 +131,11 @@ def train_random_forest(
     signature = infer_signature(model_input=X_test, model_output=prediction_test)
 
     # logging the artifacts
-    mlflow.sklearn.log_model(
+    model_uri = mlflow.sklearn.log_model(
         rf, "random_forest", signature=signature, input_example=input_example
-    )
+    ).model_uri
+
+    return model_uri
 
 
 def train_xgboost(
@@ -139,7 +144,7 @@ def train_xgboost(
     X_test: np.ndarray,
     y_test: np.ndarray,
     input_example: Dict,
-) -> None:
+) -> str:
     """
     Function responsible for training the XGBoost model and then
     saving it results into the current running MLflow experiment.
@@ -151,6 +156,9 @@ def train_xgboost(
         y_test (np.ndarray): the validation labels array.
         input_example (Dict): the training dataframe in a Dict format that will be
             used to save the model's signatures.
+    
+    Returns:
+        model_uri (str): the model uri.
     """
     # logging the xgboost default parameters using autolog
     mlflow.xgboost.autolog(
@@ -169,16 +177,16 @@ def train_xgboost(
     prediction_test_proba = xgb.predict_proba(X_test)
 
     metrics = {
-        "test f1 score": f1_score(
+        "validation f1 score": f1_score(
             y_true=y_test, y_pred=prediction_test, average="weighted", zero_division=0.0
         ),
-        "test recall": recall_score(
+        "validation recall": recall_score(
             y_true=y_test, y_pred=prediction_test, average="weighted", zero_division=0.0
         ),
-        "test precision": precision_score(
+        "validation precision": precision_score(
             y_true=y_test, y_pred=prediction_test, average="weighted", zero_division=0.0
         ),
-        "test roc auc score": roc_auc_score(
+        "validation roc auc score": roc_auc_score(
             y_true=y_test,
             y_score=prediction_test_proba,
             average="weighted",
@@ -191,14 +199,16 @@ def train_xgboost(
     signature = infer_signature(model_input=X_test, model_output=prediction_test)
 
     # logging the artifacts
-    mlflow.sklearn.log_model(
+    model_uri = mlflow.sklearn.log_model(
         xgb, "xgboost", signature=signature, input_example=input_example
-    )
+    ).model_uri
+
+    return model_uri
 
 
 def train_bert_model(
     train_df: pd.DataFrame, test_df: pd.DataFrame, input_example: Dict
-) -> None:
+) -> str:
     """
     Function responsible for training the BERT model and then
     saving it results into the current running MLflow experiment.
@@ -208,9 +218,12 @@ def train_bert_model(
         test_df (np.ndarray): the validation dataframe.
         input_example (Dict): the training dataframe in a Dict format that will be
             used to save the model's signatures.
+    
+    Returns:
+        model_uri (str): the model uri.
     """
     # defining global variables
-    epochs = 7
+    epochs = 4
     batch_size = 32
     max_len = 70
     lr = 2e-5
@@ -270,8 +283,6 @@ def train_bert_model(
     # logging the pytorch default parameters using autolog
     mlflow.pytorch.autolog(
         log_models=False,
-        log_model_signatures=False,
-        log_input_examples=False,
         log_datasets=False,
         silent=True,
     )
@@ -298,12 +309,14 @@ def train_bert_model(
         mlflow.log_metrics(test_metrics, step=epoch)
         mlflow.log_metrics(losses, step=epoch)
 
-    signature = infer_signature(model_input=test_dataloader)
+    signature = infer_signature(model_input=[test_ids.numpy(), test_attentions.numpy()])
 
     # logging the artifacts
-    mlflow.pytorch.log_model(
+    model_uri = mlflow.pytorch.log_model(
         model, "BERT", signature=signature, input_example=input_example
-    )
+    ).model_uri
+
+    return model_uri
 
 
 if __name__ == "__main__":
@@ -323,9 +336,13 @@ if __name__ == "__main__":
         training_df, test_size=0.2, shuffle=True, random_state=42
     )
 
+    # loading testing set
+    testing_df = pd.read_csv("files/preprocessed_test.csv", sep=",")
+
     # getting the mean embedding vector of each sample
     train_X, train_y = get_vector_mean(training_df)
-    test_X, test_y = get_vector_mean(validation_df)
+    valid_X, valid_y = get_vector_mean(validation_df)
+    test_X, test_y = get_vector_mean(testing_df)
 
     # creating a separate run for the Random Forest model
     with mlflow.start_run(experiment_id=experiment_id, run_name="random_forest"):
@@ -341,12 +358,20 @@ if __name__ == "__main__":
 
         # training the random forest model and saving it
         # into the mlflow experiment run
-        train_random_forest(
+        rf_model_uri = train_random_forest(
             X_train=train_X,
             y_train=train_y,
-            X_test=test_X,
-            y_test=test_y,
+            X_test=valid_X,
+            y_test=valid_y,
             input_example=example_input,
+        )
+
+        mlflow.evaluate(
+            model=rf_model_uri,
+            data=test_X,
+            targets=test_y,
+            model_type="classifier",
+            evaluators=["default"]
         )
 
     # creating a separate run for the XGBoost model
@@ -363,12 +388,20 @@ if __name__ == "__main__":
 
         # training the xgboost model and saving it
         # into the mlflow experiment run
-        train_xgboost(
+        xgb_model_uri = train_xgboost(
             X_train=train_X,
             y_train=train_y,
-            X_test=test_X,
-            y_test=test_y,
+            X_test=valid_X,
+            y_test=valid_y,
             input_example=example_input,
+        )
+
+        mlflow.evaluate(
+            model=xgb_model_uri,
+            data=test_X,
+            targets=test_y,
+            model_type="classifier",
+            evaluators=["default"]
         )
 
     # creating a separate run for the BERT model
@@ -385,6 +418,48 @@ if __name__ == "__main__":
 
         # training the BERT model and saving it
         # into the mlflow experiment run
-        train_bert_model(
+        bert_model_uri = train_bert_model(
             train_df=training_df, test_df=validation_df, input_example=example_input
         )
+
+        # creating the Bert Tokenizer
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+        
+        # preprocessing the testing texts to be exactly what Bert needs
+        test_ids, test_attentions = bert_preprocessing(
+            texts=testing_df["summary"].tolist(),
+            max_len=70,
+            tokenizer=tokenizer,
+        )
+
+        y_test = one_hot(torch.tensor(testing_df["genre"].tolist()))
+
+        # creating the test dataloader
+        test_dataloader = create_dataloader(
+            input_ids=test_ids,
+            attention_masks=test_attentions,
+            labels=y_test,
+            batch_size=32,
+            num_workers=0,
+            shuffle=False,
+        )
+
+        loaded_bert = mlflow.pytorch.load_model(bert_model_uri)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        test_metrics, test_loss = test_bert(
+            model=loaded_bert, device=device, dataloader=test_dataloader
+        )
+
+        loss = {"test loss": test_loss}
+
+        mlflow.log_metrics(test_metrics)
+        mlflow.log_metrics(loss)
+
+        # mlflow.evaluate(
+        #     model=bert_model_uri,
+        #     data=testing_df["summary"].tolist(),
+        #     targets=testing_df["genre"].tolist(),
+        #     model_type="classifier",
+        #     evaluators=["default"]
+        # )

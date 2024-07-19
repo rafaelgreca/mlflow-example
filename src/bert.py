@@ -146,9 +146,9 @@ def test_bert(
             )
 
     test_loss /= len(dataloader)
-    test_metrics["test f1 score"] = test_f1 / len(dataloader)
-    test_metrics["test recall"] = test_recall / len(dataloader)
-    test_metrics["test precision"] = test_precision / len(dataloader)
+    test_metrics["validation f1 score"] = test_f1 / len(dataloader)
+    test_metrics["validation recall"] = test_recall / len(dataloader)
+    test_metrics["validation precision"] = test_precision / len(dataloader)
     return test_metrics, test_loss
 
 
