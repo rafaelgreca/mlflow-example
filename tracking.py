@@ -231,6 +231,10 @@ def train_bert_model(
     # creating the Bert Tokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
 
+    # saving the tokenizer
+    with open(f"{os.path.join(tokenizer, 'bert_tokenizer.pkl')}", mode="wb") as f:
+        pickle.dump(tokenizer, f)
+
     # preprocessing the training and testing texts to be exactly what Bert needs
     train_ids, train_attentions = bert_preprocessing(
         texts=train_df["summary"].tolist(),
